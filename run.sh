@@ -32,6 +32,12 @@ echo "=> Run the clean script every ${CLEAN_PERIOD} seconds and delay ${DELAY_TI
 
 trap '{ echo "User Interupt."; exit 1; }' SIGINT
 trap '{ echo "SIGTERM received, exiting."; exit 0; }' SIGTERM
+
+# List candidate containers for removal
+function listRemovalCandidates {
+    cat <(docker ps -a -q -f 'status=created') <(docker ps -a -q -f 'label=com.meltwater.cleanup.removeme') | sort | uniq > "$1"
+}
+
 while [ 1 ]
 do
     # Cleanup unused volumes
@@ -44,9 +50,9 @@ do
         docker rm -v $EXITED_CONTAINERS_IDS
     fi
 
-    # Get all containers in "created" state
-    rm -f CreatedContainerIdList
-    docker ps -a -q -f status=created | sort > CreatedContainerIdList
+    # Get all containers in "created" state or flagged to autoremove
+    rm -f RemoveContainerIds
+    listRemovalCandidates RemoveContainerIds
 
     # Get all image ID
     ALL_LAYER_NUM=$(docker images -a | tail -n +2 | wc -l)
@@ -85,12 +91,15 @@ do
     echo "=> Waiting ${DELAY_TIME} seconds before cleaning"
     sleep ${DELAY_TIME} & wait
 
-    # Remove created containers that haven't managed to start within the DELAY_TIME interval
-    rm -f CreatedContainerToClean
-    comm -12 CreatedContainerIdList <(docker ps -a -q -f status=created | sort) > CreatedContainerToClean
-    if [ -s CreatedContainerToClean ]; then
-        echo "=> Start to clean $(cat CreatedContainerToClean | wc -l) created/stuck containers"
-        docker rm -v $(cat CreatedContainerToClean)
+    # Remove containers that haven't managed to start within the DELAY_TIME interval or those flagged to autoremove
+    rm -f RemoveContainerIds2 RemoveContainers
+    listRemovalCandidates RemoveContainerIds2
+    comm -12 RemoveContainerIds RemoveContainerIds2 > RemoveContainers
+
+    if [ -s RemoveContainers ]; then
+        echo "=> Start to clean $(cat RemoveContainers | wc -l) stuck/autoclean containers"
+        docker kill $(cat RemoveContainers)
+        docker rm -v $(cat RemoveContainers)
     fi
 
     # Remove images being used by containers from the delete list again. This prevents the images being pulled from deleting

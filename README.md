@@ -16,6 +16,16 @@ The default parameters can be overridden by setting environment variables on the
  * **DELAY_TIME=1800** - Seconds to wait before removing exited containers and unused images. Defaults to 1800 seconds = 30 minutes.
  * **KEEP_IMAGES** - List of images to avoid cleaning, e.g. "ubuntu:trusty, ubuntu:latest". Defaults to clean all unused images.
 
+## Container Labels
+Containers can specify the *com.meltwater.cleanup.removeme* label to be automatically killed and removed
+after DELAY_TIME seconds. This could be used to guarantee removal for transient test containers that may
+otherwise leak and stay running forever. Docker-cleanup will kill and remove containers that have the
+*com.meltwater.cleanup.removeme* label if they've been running for more than *DELAY_TIME* seconds.
+
+```
+docker run --label=com.meltwater.cleanup.removeme mytestdependency
+```
+
 ## Deployment
 The image uses the Docker client to to list and remove containers and images. For this reason the Docker client and socket is mapped into the container.
 
